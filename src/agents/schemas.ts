@@ -3,10 +3,7 @@ import { z } from "zod";
 export const MANDATORY_SLOTS = ["city", "checkIn", "checkOut", "adults"] as const;
 
 export const OPTIONAL_SLOTS = [
-  "children",
-  "rooms",
   "budgetMax",
-  "priceMin",
   "propertyTypes",
   "vibe",
   "areaPreference",
@@ -39,14 +36,28 @@ export const chipSchema = z.object({
 
 export type Chip = z.infer<typeof chipSchema>;
 
-export const intentOutputSchema = z.object({
-  slots: conversationSlotsSchema,
-  forceSearch: z.boolean().optional(),
-  nextQuestion: z.string().optional(),
-  transitionMessage: z.string().optional(),
+export const conciergeTurnSchema = z.object({
+  reply: z.string(),
+  messageType: z.enum(["question", "transition", "answer"]),
+  slots: conversationSlotsSchema.optional(),
+  readyToSearch: z.boolean(),
 });
 
-export type IntentOutput = z.infer<typeof intentOutputSchema>;
+export type ConciergeTurn = z.infer<typeof conciergeTurnSchema>;
+
+export type VerifiedSearchInputs = {
+  city: string;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  children: number;
+  rooms: number;
+  priceMin?: number;
+  budgetMax?: number;
+  ratingMin?: number;
+  propertyTypes?: string[];
+  amenities?: string[];
+};
 
 export type TraceStep = {
   agent: string;

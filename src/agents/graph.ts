@@ -4,13 +4,15 @@ import { hasOpenAI } from "../lib/openai";
 import { sendWs } from "../ws/ws-response";
 import {
   appendAssistantText,
-  appendResultsIntro,
+  appendResultsMessage,
   appendUserMessage,
   saveChatSession,
   type ChatMessage,
   type ConversationState,
 } from "../services/chat.service";
-import { runIntent } from "./nodes/intent";
+import { runConcierge } from "./nodes/concierge";
+import type { ConversationSlots } from "./schemas";
+import { buildVerifiedInputs } from "./tools";
 import { runRetrieval } from "./nodes/retrieval";
 import { isReviewIntent, runReview } from "./nodes/review";
 import {
@@ -59,7 +61,7 @@ async function persist(
   await saveChatSession(sink.token, state, messages);
 }
 
-export async function runClarifyOrSearch(
+export async function runConciergeTurn(
   sink: EventSink,
   state: ConversationState,
   messages: ChatMessage[],
@@ -72,54 +74,42 @@ export async function runClarifyOrSearch(
   }
 
   const trace = await createTrace(sink.token);
-  emitStatus(sink, "thinking", { label: "Understanding your trip...", agent: "intent" });
+  emitStatus(sink, "thinking", { label: "Thinking...", agent: "concierge" });
 
-  const intentStep = addTraceStep(trace, "intent", "parse");
+  const step = addTraceStep(trace, "concierge", "turn");
   const t0 = Date.now();
-  const intent = await runIntent(state, userText, trace);
-  completeTraceStep(intentStep, Date.now() - t0);
-  let nextState = intent.state;
+  const turn = await runConcierge(state, userText, messages, trace);
+  completeTraceStep(step, Date.now() - t0);
+
+  let nextState = turn.state;
   let nextMessages = messages;
 
   emitState(sink, nextState);
+  emitStatus(sink, "typing", { agent: "concierge" });
+  emit(sink, "assistant.message", {
+    message: turn.reply,
+    messageType: turn.messageType,
+  });
+  nextMessages = appendAssistantText(nextMessages, turn.reply, turn.messageType);
 
-  if (intent.question) {
-    emitStatus(sink, "typing", { agent: "intent" });
-    emit(sink, "assistant.message", {
-      message: intent.question,
-      messageType: "question",
-    });
-    nextMessages = appendAssistantText(nextMessages, intent.question, "question");
-    nextState.phase = "clarifying";
+  if (!turn.readyToSearch) {
+    nextState.phase = nextState.phase === "answering" ? "answering" : "clarifying";
     await persist(sink, nextState, nextMessages);
     await finishTrace(trace);
     emitStatus(sink, "idle");
     return;
   }
 
-  if (nextState.missingMandatory.length > 0) {
-    await persist(sink, nextState, nextMessages);
-    await finishTrace(trace);
-    emitStatus(sink, "idle");
-    return;
-  }
-
-  await executeSearch(sink, nextState, nextMessages, intent.transition, trace);
+  await persist(sink, nextState, nextMessages);
+  await executeSearch(sink, nextState, nextMessages, trace);
 }
 
 async function executeSearch(
   sink: EventSink,
   state: ConversationState,
   messages: ChatMessage[],
-  transition: string | null,
   trace: TraceHandle
 ): Promise<void> {
-  if (transition) {
-    emitStatus(sink, "typing", { agent: "intent" });
-    emit(sink, "assistant.message", { message: transition, messageType: "transition" });
-    messages = appendAssistantText(messages, transition, "transition");
-  }
-
   emitStatus(sink, "searching", { label: "Searching stays...", agent: "retrieval" });
   const step = addTraceStep(trace, "retrieval", "search");
   const t0 = Date.now();
@@ -136,11 +126,21 @@ async function executeSearch(
     return;
   }
 
-  let nextState = retrieval.state;
-  let nextMessages = appendResultsIntro(messages, retrieval.message);
+  const nextState = retrieval.state;
+  const slots = nextState.slots as ConversationSlots;
+  const inputs = buildVerifiedInputs(slots);
+  if (!inputs) {
+    emit(sink, "error", fail(400, "Search inputs incomplete", { retryable: true }));
+    await finishTrace(trace);
+    emitStatus(sink, "idle");
+    return;
+  }
+
+  const nextMessages = appendResultsMessage(messages, retrieval.message, inputs);
 
   emit(sink, "assistant.results", {
     message: retrieval.message,
+    inputs,
     items: retrieval.items,
     total: retrieval.total,
     mapPins: retrieval.mapPins,
@@ -165,10 +165,8 @@ export async function runFollowUp(
     return;
   }
 
-  const trace = await createTrace(sink.token);
-  let nextMessages = messages;
-
   if (isReviewIntent(userText) && (state.lastListingIds?.length ?? 0) > 0) {
+    const trace = await createTrace(sink.token);
     emitStatus(sink, "thinking", { label: "Reading reviews...", agent: "review" });
     const step = addTraceStep(trace, "review", "summarize");
     const t0 = Date.now();
@@ -183,7 +181,7 @@ export async function runFollowUp(
     }
 
     emit(sink, "assistant.message", { message: review.answer, messageType: "answer" });
-    nextMessages = appendAssistantText(nextMessages, review.answer, "answer");
+    const nextMessages = appendAssistantText(messages, review.answer, "answer");
 
     emit(sink, "done", {
       answer: review.answer,
@@ -198,8 +196,7 @@ export async function runFollowUp(
     return;
   }
 
-  state.forceSearch = state.forceSearch || /search again|new search|update/i.test(userText);
-  await runClarifyOrSearch(sink, state, nextMessages, userText);
+  await runConciergeTurn(sink, state, messages, userText);
 }
 
 export async function handleUserTurn(
@@ -209,14 +206,13 @@ export async function handleUserTurn(
   userText: string,
   isStart: boolean
 ): Promise<void> {
-  let nextMessages = appendUserMessage(messages, userText);
+  const nextMessages = appendUserMessage(messages, userText);
+  await persist(sink, state, nextMessages);
 
   if (state.phase === "answering" && !isStart) {
-    await persist(sink, state, nextMessages);
     await runFollowUp(sink, state, nextMessages, userText);
     return;
   }
 
-  await persist(sink, state, nextMessages);
-  await runClarifyOrSearch(sink, state, nextMessages, userText);
+  await runConciergeTurn(sink, state, nextMessages, userText);
 }

@@ -1,6 +1,7 @@
 import { redis } from "../lib/redis";
 import { config } from "../config";
 import { v4 as uuidv4 } from "uuid";
+import type { VerifiedSearchInputs } from "../agents/schemas";
 
 export type ConversationState = {
   conversationId: string;
@@ -12,6 +13,7 @@ export type ConversationState = {
   chips: { label: string; value: string }[];
   updatedAt: string;
   lastListingIds?: string[];
+  pendingSlot?: string | null;
 };
 
 export type ChatMessage = {
@@ -20,6 +22,7 @@ export type ChatMessage = {
   kind: "text" | "results";
   content: string;
   messageType?: "question" | "transition" | "answer";
+  inputs?: VerifiedSearchInputs;
   createdAt: string;
 };
 
@@ -82,6 +85,7 @@ export function createEmptyState(): ConversationState {
     forceSearch: false,
     chips: [],
     updatedAt: new Date().toISOString(),
+    pendingSlot: null,
   };
 }
 
@@ -116,7 +120,11 @@ export function appendAssistantText(
   ];
 }
 
-export function appendResultsIntro(messages: ChatMessage[], content: string): ChatMessage[] {
+export function appendResultsMessage(
+  messages: ChatMessage[],
+  content: string,
+  inputs: VerifiedSearchInputs
+): ChatMessage[] {
   return [
     ...messages,
     {
@@ -124,6 +132,7 @@ export function appendResultsIntro(messages: ChatMessage[], content: string): Ch
       role: "assistant",
       kind: "results",
       content,
+      inputs,
       createdAt: new Date().toISOString(),
     },
   ];
