@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model City {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  country   String?
+  boundsNe  Float?   @map("bounds_ne_lat")
+  boundsNeLng Float? @map("bounds_ne_lng")
+  boundsSw  Float?   @map("bounds_sw_lat")
+  boundsSwLng Float? @map("bounds_sw_lng")
+  createdAt DateTime @default(now()) @map("created_at")
+  listings  Listing[]
+  neighbourhoods Neighbourhood[]
+
+  @@map("cities")
+}
+
+model Neighbourhood {
+  id        String   @id @default(cuid())
+  cityId    String   @map("city_id")
+  name      String
+  slug      String
+  geojson   Json?
+  city      City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  listings  Listing[]
+
+  @@unique([cityId, slug])
+  @@map("neighbourhoods")
+}
+
+model Listing {
+  id              String    @id
+  cityId          String    @map("city_id")
+  neighbourhoodId String?   @map("neighbourhood_id")
+  name            String
+  description     String?   @db.Text
+  propertyType    String    @map("property_type")
+  roomType        String    @map("room_type")
+  accommodates    Int       @default(1)
+  bedrooms        Int?
+  beds            Int?
+  bathrooms       Float?
+  price           Float?
+  latitude        Float
+  longitude       Float
+  amenities       String[]  @default([])
+  photos          String[]  @default([])
+  hostId          String?   @map("host_id")
+  hostName        String?   @map("host_name")
+  ratingAvg       Float?    @map("rating_avg")
+  reviewCount     Int       @default(0) @map("review_count")
+  reviewSummary   String?   @map("review_summary") @db.Text
+  aspectScores    Json?     @map("aspect_scores")
+  pricePercentile Float?    @map("price_percentile")
+  sourceUrl       String?   @map("source_url")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  city            City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  neighbourhood   Neighbourhood? @relation(fields: [neighbourhoodId], references: [id])
+  calendarDays    CalendarDay[]
+  reviews         Review[]
+  embedding       ListingEmbedding?
+  wishlistItems   WishlistItem[]
+
+  @@index([cityId, price])
+  @@index([cityId, ratingAvg(sort: Desc)])
+  @@index([latitude, longitude])
+  @@map("listings")
+}
+
+model CalendarDay {
+  id        String   @id @default(cuid())
+  listingId String   @map("listing_id")
+  date      DateTime @db.Date
+  available Boolean  @default(true)
+  price     Float?
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@index([date, available, listingId])
+  @@map("calendar_days")
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  listingId  String   @map("listing_id")
+  date       DateTime @db.Date
+  reviewerId String?  @map("reviewer_id")
+  reviewerName String? @map("reviewer_name")
+  rating     Float?
+  text       String?  @db.Text
+  language   String?
+  aspects    Json?
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  embedding  ReviewEmbedding?
+
+  @@index([listingId, date(sort: Desc)])
+  @@index([listingId, rating])
+  @@map("reviews")
+}
+
+model ListingEmbedding {
+  listingId String   @id @map("listing_id")
+  embedding Float[]
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@map("listing_embeddings")
+}
+
+model ReviewEmbedding {
+  reviewId  String  @id @map("review_id")
+  embedding Float[]
+  review    Review  @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("review_embeddings")
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  token     String
+  listingId String   @map("listing_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([token, listingId])
+  @@index([token])
+  @@map("wishlist_items")
+}
+
+model AgentTrace {
+  id         String   @id @default(cuid())
+  requestId  String   @unique @map("request_id")
+  token      String?
+  steps      Json     @default("[]")
+  tokensUsed Int?     @map("tokens_used")
+  latencyMs  Int?     @map("latency_ms")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([token])
+  @@map("agent_traces")
+}
