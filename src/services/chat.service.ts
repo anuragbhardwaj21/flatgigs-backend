@@ -11,12 +11,15 @@ export type ConversationState = {
   forceSearch: boolean;
   chips: { label: string; value: string }[];
   updatedAt: string;
+  lastListingIds?: string[];
 };
 
 export type ChatMessage = {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant";
+  kind: "text" | "results";
   content: string;
+  messageType?: "question" | "transition" | "answer";
   createdAt: string;
 };
 
@@ -32,6 +35,12 @@ async function refreshTtl(token: string): Promise<void> {
   const ttl = config.cache.chatTtlSeconds;
   await redis.expire(stateKey(token), ttl);
   await redis.expire(messagesKey(token), ttl);
+}
+
+export async function getChatSessionExpiresAt(token: string): Promise<string | null> {
+  const ttl = await redis.ttl(stateKey(token));
+  if (ttl <= 0) return null;
+  return new Date(Date.now() + ttl * 1000).toISOString();
 }
 
 export async function getChatSession(token: string): Promise<{
@@ -74,4 +83,48 @@ export function createEmptyState(): ConversationState {
     chips: [],
     updatedAt: new Date().toISOString(),
   };
+}
+
+export function appendUserMessage(messages: ChatMessage[], content: string): ChatMessage[] {
+  return [
+    ...messages,
+    {
+      id: uuidv4(),
+      role: "user",
+      kind: "text",
+      content,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
+export function appendAssistantText(
+  messages: ChatMessage[],
+  content: string,
+  messageType?: "question" | "transition" | "answer"
+): ChatMessage[] {
+  return [
+    ...messages,
+    {
+      id: uuidv4(),
+      role: "assistant",
+      kind: "text",
+      content,
+      messageType,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
+export function appendResultsIntro(messages: ChatMessage[], content: string): ChatMessage[] {
+  return [
+    ...messages,
+    {
+      id: uuidv4(),
+      role: "assistant",
+      kind: "results",
+      content,
+      createdAt: new Date().toISOString(),
+    },
+  ];
 }

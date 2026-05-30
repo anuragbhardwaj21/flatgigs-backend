@@ -5,6 +5,7 @@ import { ok } from "../lib/api-response";
 import { sendWs } from "./ws-response";
 import { handleWsMessage } from "./chat.handler";
 import { validate as uuidValidate } from "uuid";
+import { replayHistoryIfAny } from "../services/conversation.service";
 
 export function attachWebSocketServer(server: Server): WebSocketServer {
   const wss = new WebSocketServer({ server, path: config.wsPath });
@@ -15,6 +16,16 @@ export function attachWebSocketServer(server: Server): WebSocketServer {
     const tokenStr = Array.isArray(token) ? token[0] : token;
 
     sendWs(ws, "connected", ok({ message: "connected" }));
+
+    if (tokenStr && uuidValidate(tokenStr)) {
+      replayHistoryIfAny(ws, tokenStr).catch((err) => {
+        sendWs(ws, "error", {
+          data: null,
+          success: false,
+          meta: { code: 500, message: err instanceof Error ? err.message : "History replay failed" },
+        });
+      });
+    }
 
     ws.on("message", (data) => {
       const raw = data.toString();

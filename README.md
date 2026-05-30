@@ -8,7 +8,7 @@ AI-native travel stays API (Express, Prisma, PostgreSQL + pgvector, Redis, WebSo
 - Yarn
 - PostgreSQL with `vector` extension
 - Redis
-- OpenAI API key (ingest embeddings + compare/chat)
+- OpenAI API key (ingest embeddings, compare, AI chat)
 
 ## Setup
 
@@ -44,6 +44,7 @@ yarn dev
 ```
 
 - REST: `http://localhost:4000/api/v1`
+- Chat (frontend): [docs/chat-frontend.md](docs/chat-frontend.md)
 - Health: `GET /health`
 - WebSocket: `ws://localhost:4000/ws?token=<uuid-v4>`
 - Header: `X-Token: <uuid-v4>` on protected REST routes

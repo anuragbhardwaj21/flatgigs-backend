@@ -32,7 +32,7 @@ export const config = {
     temperature: 0.2,
   },
   cache: {
-    chatTtlSeconds: 3600,
+    chatTtlSeconds: 1200,
     searchTtlSeconds: 300,
     summaryTtlSeconds: 86400,
     compareTtlSeconds: 3600,
