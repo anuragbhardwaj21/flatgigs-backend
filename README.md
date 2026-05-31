@@ -1,108 +1,78 @@
 # FlatGigs Backend
 
-AI-native travel stays API (Express, Prisma, PostgreSQL + pgvector, Redis, WebSocket).
+AI travel stays API — Express, PostgreSQL + pgvector, Redis, WebSocket chat.
 
-## Prerequisites
+## Stack
 
-- Node 20+
-- Yarn
-- PostgreSQL with `vector` extension
-- Redis
-- OpenAI API key (ingest embeddings, compare, AI chat)
+Node 20 · Prisma · OpenAI · Inside Airbnb data (Lisbon + Barcelona)
 
-## Setup
+## Docker (recommended)
+
+Requires Docker only. Ingest downloads data, runs migrations, loads DB (~1–3 hours).
+
+```bash
+cd ~/Developer/flatgigs-backend   # EC2: cd ~/flatgigs-backend
+git pull
+cp .env.docker.example .env
+nano .env                          # set OPENAI_API_KEY
+docker compose up -d --build
+curl http://localhost:4000/health
+chmod +x scripts/docker/run-ingest.sh
+./scripts/docker/run-ingest.sh
+```
+
+Ingest stops the app, loads data, then restarts it automatically.
+
+**Cleanup / rebuild**
+
+```bash
+docker compose down --rmi local
+docker rm -f $(docker ps -aq --filter "name=flatgigs") 2>/dev/null || true
+docker builder prune -f
+docker compose up -d --build
+```
+
+**Full reset** (wipes DB + cached downloads)
+
+```bash
+docker compose down -v --rmi local && docker builder prune -f
+```
+
+| Command | Description |
+|---------|-------------|
+| `docker compose logs -f app` | App logs |
+| `docker compose down` | Stop all |
+| `yarn docker:ingest` | Re-run ingest pipeline |
+
+Host Postgres port: **5433** (avoids conflict with local Postgres on 5432).
+
+## Local dev (without Docker app)
 
 ```bash
 cp .env.example .env
-yarn install
-yarn install
-yarn prisma:migrate
-```
-
-Enable pgvector:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-## Data
-
-Place Inside Airbnb files under `data/raw/{lisbon,barcelona}/`. See [data/README.md](data/README.md).
-
-```bash
-yarn ingest
-```
-
-Re-runnable per city (clears city listings before reload).
-
-**Supabase ingest:** set `DIRECT_DATABASE_URL` (Database → Direct connection, port 5432) for bulk writes. Keep `DATABASE_URL` on Session pooler (5432) for the API. If you see `read-only transaction`, resume the project in the Supabase dashboard (paused / quota) or ingest against local Postgres first.
-
-## Run
-
-```bash
+docker compose up -d postgres redis
+yarn install && yarn prisma:migrate
 yarn dev
 ```
 
-- REST: `http://localhost:4000/api/v1`
-- Chat (frontend): [docs/chat-frontend.md](docs/chat-frontend.md)
-- Health: `GET /health`
-- WebSocket: `ws://localhost:4000/ws?token=<uuid-v4>`
-- Header: `X-Token: <uuid-v4>` on protected REST routes
+Set `DATABASE_URL=postgresql://flatgigs:flatgigs@localhost:5433/flatgigs?schema=public` and `REDIS_URL=redis://localhost:6379`.
 
-## Config
+## API
 
-Secrets in `.env`: `PORT`, `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`.
+| | |
+|--|--|
+| REST | `http://localhost:4000/api/v1` |
+| Health | `GET /health` |
+| WebSocket | `ws://localhost:4000/ws?token=<uuid-v4>` |
+| Auth header | `X-Token: <uuid-v4>` |
 
-All other settings: [src/config.ts](src/config.ts).
+## Env
 
-## Docker (full stack)
+| Variable | Required |
+|----------|----------|
+| `PORT` | default `4000` |
+| `DATABASE_URL` | yes |
+| `REDIS_URL` | yes |
+| `OPENAI_API_KEY` | yes (chat + embeddings) |
 
-Run Postgres, Redis, and the API together. Data is downloaded automatically during ingest.
-
-```bash
-cp .env.docker.example .env   # set OPENAI_API_KEY
-docker compose up -d --build
-curl http://localhost:4000/health
-```
-
-**First-time ingest** (stop API → download → migrate → load data → restart API):
-
-```bash
-chmod +x scripts/docker/run-ingest.sh
-./scripts/docker/run-ingest.sh
-# or: yarn docker:ingest
-```
-
-Ingest can take 1–3+ hours. Use `tmux` on a remote server.
-
-| Step | Command |
-|------|---------|
-| Start stack | `docker compose up -d --build` |
-| Run ingest | `./scripts/docker/run-ingest.sh` |
-| Logs (app) | `docker compose logs -f app` |
-| Stop all | `docker compose down` |
-
-Compose uses internal hostnames `postgres` and `redis`. For local dev outside Docker, use `DATABASE_URL=postgresql://flatgigs:flatgigs@localhost:5432/flatgigs?schema=public`.
-
-## Docker (Postgres + Redis only)
-
-```bash
-docker compose up -d postgres redis
-```
-
-Use `DATABASE_URL=postgresql://flatgigs:flatgigs@localhost:5432/flatgigs?schema=public` when using compose Postgres only.
-
-## Scripts
-
-
-| Command                 | Description                                 |
-| ----------------------- | ------------------------------------------- |
-| `GET /api/v1/top-picks` | Curated top stays (`?city=lisbon&limit=12`) |
-| `yarn dev`              | Dev server                                  |
-| `yarn ingest`           | Load CSV data                               |
-| `yarn ingest:download`  | Download Inside Airbnb CSVs                 |
-| `yarn docker:ingest`    | Stop app, run full Docker ingest pipeline   |
-| `yarn build`            | Compile TypeScript                          |
-| `yarn start`            | Production server                           |
-
-
+See [`.env.docker.example`](.env.docker.example) for Docker. Other settings: [`src/config.ts`](src/config.ts).
