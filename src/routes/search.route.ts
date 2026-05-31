@@ -1,36 +1,57 @@
 import { Router } from "express";
 import { z } from "zod";
+import { config } from "../config";
 import { searchListings } from "../services/search.service";
+
+function parseStringArray(val: unknown): string[] | undefined {
+  if (val == null || val === "") return undefined;
+  if (Array.isArray(val)) {
+    return val.flatMap((v) => String(v).split(",").map((s) => s.trim()).filter(Boolean));
+  }
+  const parts = String(val)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.length ? parts : undefined;
+}
+
+function parseBool(val: unknown): boolean | undefined {
+  if (val == null || val === "") return undefined;
+  const s = String(val).toLowerCase();
+  if (s === "false" || s === "0") return false;
+  if (s === "true" || s === "1") return true;
+  return undefined;
+}
 
 const schema = z.object({
   city: z.string().min(1),
   checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  adults: z.number().optional(),
-  children: z.number().optional(),
-  rooms: z.number().optional(),
-  priceMin: z.number().optional(),
-  priceMax: z.number().optional(),
-  ratingMin: z.number().optional(),
-  propertyTypes: z.array(z.string()).optional(),
-  amenities: z.array(z.string()).optional(),
+  adults: z.coerce.number().int().min(1).optional(),
+  children: z.coerce.number().int().min(0).optional(),
+  rooms: z.coerce.number().int().min(1).optional(),
+  priceMin: z.coerce.number().min(0).optional(),
+  priceMax: z.coerce.number().min(0).optional(),
+  ratingMin: z.coerce.number().min(0).max(5).optional(),
+  propertyTypes: z.preprocess(parseStringArray, z.array(z.string()).optional()),
+  amenities: z.preprocess(parseStringArray, z.array(z.string()).optional()),
   sort: z
     .enum(["price_asc", "price_desc", "rating", "popularity", "distance"])
     .optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
+  lat: z.coerce.number().optional(),
+  lng: z.coerce.number().optional(),
   bounds: z.string().optional(),
-  page: z.number().optional(),
-  limit: z.number().optional(),
-  includeMapPins: z.boolean().optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+  includeMapPins: z.preprocess(parseBool, z.boolean().optional()),
 });
 
 export const searchRouter = Router();
 
-searchRouter.post("/search", async (req, res) => {
-  const parsed = schema.safeParse(req.body);
+searchRouter.get("/search", async (req, res) => {
+  const parsed = schema.safeParse(req.query);
   if (!parsed.success) {
-    res.fail(400, "Invalid search body", {
+    res.fail(400, "Invalid search query", {
       errors: parsed.error.flatten().fieldErrors,
     });
     return;
@@ -63,6 +84,7 @@ searchRouter.post("/search", async (req, res) => {
     return;
   }
 
+  res.set("Cache-Control", `private, max-age=${config.cache.searchTtlSeconds}`);
   res.success(result, {
     page: q.page ?? 1,
     limit: Math.min(q.limit ?? 20, 50),

@@ -83,6 +83,8 @@ Set `DATABASE_URL=postgresql://flatgigs:flatgigs@localhost:5433/flatgigs?schema=
 | WebSocket | `ws://localhost:4000/ws?token=<uuid-v4>` |
 | Auth header | `X-Token: <uuid-v4>` |
 
+Search (GET): see [`SEARCH.md`](SEARCH.md) for query params, response shape, and frontend caching.
+
 ## Env
 
 | Variable | Required |
