@@ -4,7 +4,7 @@ services:
     container_name: flatgigs-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: flatgigs
       POSTGRES_PASSWORD: flatgigs
@@ -25,7 +25,52 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: flatgigs-app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://flatgigs:flatgigs@postgres:5432/flatgigs?schema=public
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ingest_data:/app/data/raw
+
+  ingest:
+    build: .
+    container_name: flatgigs-ingest
+    profiles:
+      - tools
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://flatgigs:flatgigs@postgres:5432/flatgigs?schema=public
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ingest_data:/app/data/raw
+    command: ["sh", "scripts/docker/bootstrap-ingest.sh"]
+    restart: "no"
 
 volumes:
   postgres_data:
   redis_data:
+  ingest_data:

@@ -46,6 +46,18 @@ export const config = {
   ingest: {
     dataDir: "./data/raw",
     cities: ["lisbon", "barcelona"] as const,
+    citySources: {
+      lisbon: {
+        country: "portugal",
+        city: "lisbon",
+        snapshot: process.env.LISBON_SNAPSHOT ?? "2025-03-22",
+      },
+      barcelona: {
+        country: "spain",
+        city: "barcelona",
+        snapshot: process.env.BARCELONA_SNAPSHOT ?? "2025-03-22",
+      },
+    },
     listingBatchSize: 500,
     calendarBatchSize: 2000,
     reviewBatchSize: 1000,

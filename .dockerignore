@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+!.env.docker.example
+.git
+.cursor
+data/raw
+*.md
+!README.md
+*.pem
+.DS_Store
