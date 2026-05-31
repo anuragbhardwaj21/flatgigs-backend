@@ -5,7 +5,7 @@ import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import { config } from "../../src/config";
 
-const BASE_URL = "http://data.insideairbnb.com";
+const BASE_URL = "https://data.insideairbnb.com";
 
 const FILES = [
   { name: "listings.csv.gz", dir: "data" },
@@ -14,12 +14,17 @@ const FILES = [
   { name: "neighbourhoods.geojson", dir: "visualisations" },
 ] as const;
 
+const FETCH_HEADERS = {
+  "User-Agent": "FlatGigs/1.0 (data ingest; +https://github.com/anuragbhardwaj21/flatgigs-backend)",
+  Accept: "*/*",
+};
+
 function forceDownload(): boolean {
   return process.env.FORCE_DOWNLOAD === "1" || process.env.FORCE_DOWNLOAD === "true";
 }
 
 async function downloadFile(url: string, dest: string): Promise<void> {
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: FETCH_HEADERS, redirect: "follow" });
   if (!res.ok) {
     throw new Error(`Download failed ${res.status} ${url}`);
   }
@@ -48,7 +53,7 @@ async function downloadCity(slug: string): Promise<void> {
       continue;
     }
 
-    const url = `${BASE_URL}/${source.country}/${source.city}/${source.snapshot}/${file.dir}/${file.name}`;
+    const url = `${BASE_URL}/${source.path}/${source.snapshot}/${file.dir}/${file.name}`;
     process.stdout.write(`Downloading ${url}\n`);
     await downloadFile(url, dest);
     process.stdout.write(`Saved ${dest}\n`);

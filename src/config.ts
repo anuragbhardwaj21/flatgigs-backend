@@ -48,14 +48,12 @@ export const config = {
     cities: ["lisbon", "barcelona"] as const,
     citySources: {
       lisbon: {
-        country: "portugal",
-        city: "lisbon",
-        snapshot: process.env.LISBON_SNAPSHOT ?? "2025-03-22",
+        path: "portugal/lisbon/lisbon",
+        snapshot: process.env.LISBON_SNAPSHOT ?? "2025-12-25",
       },
       barcelona: {
-        country: "spain",
-        city: "barcelona",
-        snapshot: process.env.BARCELONA_SNAPSHOT ?? "2025-03-22",
+        path: "spain/catalonia/barcelona",
+        snapshot: process.env.BARCELONA_SNAPSHOT ?? "2025-12-14",
       },
     },
     listingBatchSize: 500,
