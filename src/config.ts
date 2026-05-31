@@ -6,6 +6,8 @@ const envSchema = z.object({
   databaseUrl: z.string().min(1),
   redisUrl: z.string().min(1),
   openaiApiKey: z.string().optional(),
+  corsOrigin: z.string().optional(),
+  publicBaseUrl: z.string().optional(),
 });
 
 const parsed = envSchema.parse({
@@ -13,15 +15,31 @@ const parsed = envSchema.parse({
   databaseUrl: process.env.DATABASE_URL,
   redisUrl: process.env.REDIS_URL,
   openaiApiKey: process.env.OPENAI_API_KEY,
+  corsOrigin: process.env.CORS_ORIGIN,
+  publicBaseUrl: process.env.PUBLIC_BASE_URL,
 });
+
+function parseCorsOrigins(raw?: string): { allowAll: boolean; origins: string[] } {
+  if (!raw?.trim() || raw.trim() === "*") {
+    return { allowAll: true, origins: [] };
+  }
+  return {
+    allowAll: false,
+    origins: raw.split(",").map((o) => o.trim()).filter(Boolean),
+  };
+}
+
+const cors = parseCorsOrigins(parsed.corsOrigin);
 
 export const config = {
   env: (process.env.NODE_ENV ?? "development") as "development" | "production" | "test",
   host: "0.0.0.0",
   port: parsed.port,
   apiPrefix: "/api/v1",
-  publicBaseUrl: `http://localhost:${parsed.port}`,
-  corsOrigin: "http://localhost:5173",
+  publicBaseUrl: parsed.publicBaseUrl ?? `http://localhost:${parsed.port}`,
+  corsAllowAll: cors.allowAll,
+  corsOrigins: cors.origins,
+  corsOrigin: cors.allowAll ? "*" : cors.origins[0] ?? "http://localhost:5173",
   wsPath: "/ws",
   logHttp: true,
   openai: {

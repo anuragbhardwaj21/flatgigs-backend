@@ -20,7 +20,20 @@ export function createApp() {
     );
   }
 
-  app.use(cors({ origin: config.corsOrigin, credentials: true }));
+  app.use(
+    cors({
+      origin: config.corsAllowAll
+        ? true
+        : (origin, callback) => {
+            if (!origin || config.corsOrigins.includes(origin)) {
+              callback(null, true);
+              return;
+            }
+            callback(null, false);
+          },
+      credentials: true,
+    })
+  );
   app.use(express.json());
   app.use(requestIdMiddleware);
   app.use(apiResponseMiddleware);

@@ -23,6 +23,23 @@ chmod +x scripts/docker/run-ingest.sh
 
 Ingest stops the app, loads data, then restarts it automatically.
 
+**Deploy update** (after `git push` — rebuild app only, keeps Postgres/Redis data)
+
+```bash
+cd ~/flatgigs-backend   # local: cd ~/Developer/flatgigs-backend
+git pull
+docker compose build app
+docker compose up -d app
+```
+
+Do **not** use `docker compose down -v` unless you want to wipe the database.
+
+If you added Prisma migrations:
+
+```bash
+docker compose exec app npx prisma migrate deploy
+```
+
 **Cleanup / rebuild**
 
 ```bash
@@ -74,5 +91,6 @@ Set `DATABASE_URL=postgresql://flatgigs:flatgigs@localhost:5433/flatgigs?schema=
 | `DATABASE_URL` | yes |
 | `REDIS_URL` | yes |
 | `OPENAI_API_KEY` | yes (chat + embeddings) |
+| `CORS_ORIGIN` | optional — omit or `*` = allow all; comma-list to restrict |
 
 See [`.env.docker.example`](.env.docker.example) for Docker. Other settings: [`src/config.ts`](src/config.ts).
