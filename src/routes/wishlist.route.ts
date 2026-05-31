@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { getListingById, getWishlistListings } from "../services/listing.service";
+import { getListingById, getWishlistListings, wishlistCacheKey } from "../services/listing.service";
+import { cacheDel } from "../lib/cache";
 
 export const wishlistRouter = Router();
 
@@ -31,6 +32,8 @@ wishlistRouter.post("/wishlist", async (req, res) => {
     update: {},
   });
 
+  await cacheDel(wishlistCacheKey(req.token!));
+
   res.success({ listingId: body.data.listingId }, { code: 201, message: "Added" });
 });
 
@@ -38,5 +41,6 @@ wishlistRouter.delete("/wishlist/:listingId", async (req, res) => {
   await prisma.wishlistItem.deleteMany({
     where: { token: req.token!, listingId: req.params.listingId },
   });
+  await cacheDel(wishlistCacheKey(req.token!));
   res.success({ removed: req.params.listingId });
 });

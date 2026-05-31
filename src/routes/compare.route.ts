@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { createHash } from "crypto";
 import { prisma } from "../lib/prisma";
-import { redis } from "../lib/redis";
 import { config } from "../config";
+import { cacheGet, cacheKey, cacheSet } from "../lib/cache";
 import { getOpenAI, hasOpenAI } from "../lib/openai";
 
 export const compareRouter = Router();
@@ -22,11 +21,10 @@ compareRouter.post("/compare", async (req, res) => {
     return;
   }
 
-  const cacheHash = createHash("sha256").update(JSON.stringify(body.data)).digest("hex").slice(0, 16);
-  const cacheKey = `compare:v1:${cacheHash}`;
-  const cached = await redis.get(cacheKey);
+  const key = cacheKey("compare:v1", body.data as Record<string, unknown>);
+  const cached = await cacheGet<{ listings: unknown[]; verdict: string }>(key);
   if (cached) {
-    res.success(JSON.parse(cached));
+    res.success(cached);
     return;
   }
 
@@ -71,6 +69,6 @@ compareRouter.post("/compare", async (req, res) => {
   }
 
   const result = { listings: cards, verdict };
-  await redis.setex(cacheKey, config.cache.compareTtlSeconds, JSON.stringify(result));
+  await cacheSet(key, result, config.cache.compareTtlSeconds);
   res.success(result);
 });

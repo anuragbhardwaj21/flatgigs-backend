@@ -2,21 +2,21 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   getListingById,
+  getListingDetail,
   getListingCalendar,
   getListingReviews,
   buildPriceQuote,
-  toListingDetail,
 } from "../services/listing.service";
 
 export const listingsRouter = Router();
 
 listingsRouter.get("/listings/:id", async (req, res) => {
-  const listing = await getListingById(req.params.id);
+  const listing = await getListingDetail(req.params.id);
   if (!listing) {
     res.fail(404, "Listing not found");
     return;
   }
-  res.success(toListingDetail(listing));
+  res.success(listing);
 });
 
 listingsRouter.get("/listings/:id/calendar", async (req, res) => {

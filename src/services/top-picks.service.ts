@@ -1,7 +1,6 @@
-import { createHash } from "crypto";
 import { prisma } from "../lib/prisma";
-import { redis } from "../lib/redis";
 import { config } from "../config";
+import { cacheGet, cacheKey, cacheSet } from "../lib/cache";
 
 export type TopPickItem = {
   id: string;
@@ -22,9 +21,8 @@ export type TopPicksParams = {
   limit?: number;
 };
 
-function cacheKey(params: TopPicksParams): string {
-  const hash = createHash("sha256").update(JSON.stringify(params)).digest("hex").slice(0, 12);
-  return `top-picks:v1:${hash}`;
+function cacheKeyFor(params: TopPicksParams): string {
+  return cacheKey("top-picks:v1", { ...params, limit: Math.min(params.limit ?? 12, 30) });
 }
 
 function toCard(
@@ -59,9 +57,9 @@ function toCard(
 
 export async function getTopPicks(params: TopPicksParams) {
   const limit = Math.min(params.limit ?? 12, 30);
-  const cached = await redis.get(cacheKey({ ...params, limit }));
+  const cached = await cacheGet<{ picks: TopPickItem[] }>(cacheKeyFor({ ...params, limit }));
   if (cached) {
-    return JSON.parse(cached) as { picks: TopPickItem[] };
+    return cached;
   }
 
   const cityFilter = params.city
@@ -140,6 +138,6 @@ export async function getTopPicks(params: TopPicksParams) {
   }
 
   const result = { picks };
-  await redis.setex(cacheKey({ ...params, limit }), config.cache.searchTtlSeconds, JSON.stringify(result));
+  await cacheSet(cacheKeyFor({ ...params, limit }), result, config.cache.topPicksTtlSeconds);
   return result;
 }

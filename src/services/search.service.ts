@@ -1,7 +1,6 @@
-import { createHash } from "crypto";
 import { prisma } from "../lib/prisma";
-import { redis } from "../lib/redis";
 import { config } from "../config";
+import { cacheGet, cacheKey, cacheSet } from "../lib/cache";
 import { findAvailableListingIds } from "./availability.query";
 import { getStayNightlyPrices } from "./calendar-pricing";
 
@@ -26,42 +25,26 @@ export type SearchParams = {
   includeMapPins?: boolean;
 };
 
-function parseDate(s: string): Date {
-  return new Date(`${s}T00:00:00.000Z`);
-}
+type SearchBaseParams = Omit<SearchParams, "page" | "limit" | "includeMapPins">;
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const r = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+type SearchItem = {
+  id: string;
+  name: string;
+  photos: string[];
+  propertyType: string;
+  roomType: string;
+  pricePerNight: number;
+  totalForStay: number;
+  rating: number | null;
+  reviewCount: number;
+  amenities: string[];
+  latitude: number;
+  longitude: number;
+  distanceKm?: number;
+};
 
-function cacheKey(params: SearchParams): string {
-  const normalized = JSON.stringify(params);
-  const hash = createHash("sha256").update(normalized).digest("hex").slice(0, 16);
-  return `search:v1:${hash}`;
-}
-
-export type SearchResult = {
-  items: {
-    id: string;
-    name: string;
-    photos: string[];
-    propertyType: string;
-    roomType: string;
-    pricePerNight: number;
-    totalForStay: number;
-    rating: number | null;
-    reviewCount: number;
-    amenities: string[];
-    latitude: number;
-    longitude: number;
-    distanceKm?: number;
-  }[];
+type CachedSearchBase = {
+  items: SearchItem[];
   total: number;
   facets: {
     priceRange: { min: number; max: number };
@@ -77,14 +60,68 @@ export type SearchResult = {
   }[];
 };
 
+export type SearchResult = {
+  items: SearchItem[];
+  total: number;
+  facets: CachedSearchBase["facets"];
+  mapPins: CachedSearchBase["mapPins"];
+};
+
+const SEARCH_BASE_PREFIX = "search:base:v2";
+
+function parseDate(s: string): Date {
+  return new Date(`${s}T00:00:00.000Z`);
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const r = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toBaseParams(params: SearchParams): SearchBaseParams {
+  const {
+    page: _page,
+    limit: _limit,
+    includeMapPins: _includeMapPins,
+    ...base
+  } = params;
+  return base;
+}
+
+function searchBaseCacheKey(params: SearchBaseParams): string {
+  return cacheKey(SEARCH_BASE_PREFIX, params as Record<string, unknown>);
+}
+
+function paginateResult(
+  base: CachedSearchBase,
+  page: number,
+  limit: number,
+  includeMapPins: boolean
+): SearchResult {
+  const offset = (page - 1) * limit;
+  return {
+    items: base.items.slice(offset, offset + limit),
+    total: base.total,
+    facets: base.facets,
+    mapPins: includeMapPins ? base.mapPins : [],
+  };
+}
+
 export async function searchListings(params: SearchParams): Promise<SearchResult | null> {
   const page = params.page ?? 1;
   const limit = Math.min(params.limit ?? 20, 50);
   const includeMapPins = params.includeMapPins !== false;
+  const baseParams = toBaseParams(params);
+  const key = searchBaseCacheKey(baseParams);
 
-  const cached = await redis.get(cacheKey(params));
+  const cached = await cacheGet<CachedSearchBase>(key);
   if (cached) {
-    return JSON.parse(cached) as SearchResult;
+    return paginateResult(cached, page, limit, includeMapPins);
   }
 
   const city = await prisma.city.findFirst({
@@ -130,7 +167,7 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
   const availableIds = await findAvailableListingIds(candidateIds, checkIn, checkOut);
 
   if (availableIds.length === 0) {
-    const empty = {
+    const empty: CachedSearchBase = {
       items: [],
       total: 0,
       facets: {
@@ -140,8 +177,8 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
       },
       mapPins: [],
     };
-    await redis.setex(cacheKey(params), config.cache.searchTtlSeconds, JSON.stringify(empty));
-    return empty;
+    await cacheSet(key, empty, config.cache.searchTtlSeconds);
+    return paginateResult(empty, page, limit, includeMapPins);
   }
 
   let listings = await prisma.listing.findMany({
@@ -192,11 +229,7 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
     }
   });
 
-  const total = withMeta.length;
-  const offset = (page - 1) * limit;
-  const pageItems = withMeta.slice(offset, offset + limit);
-
-  const items = pageItems.map(({ listing, distanceKm, pricePerNight, totalForStay }) => ({
+  const items: SearchItem[] = withMeta.map(({ listing, distanceKm, pricePerNight, totalForStay }) => ({
     id: listing.id,
     name: listing.name,
     photos: listing.photos,
@@ -220,19 +253,23 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
     }))
   );
 
-  const mapPins = includeMapPins
-    ? withMeta.map(({ listing, pricePerNight }) => ({
-        id: listing.id,
-        lat: listing.latitude,
-        lng: listing.longitude,
-        pricePerNight: pricePerNight ?? 0,
-        ratingAvg: listing.ratingAvg ?? 0,
-      }))
-    : [];
+  const mapPins = withMeta.map(({ listing, pricePerNight }) => ({
+    id: listing.id,
+    lat: listing.latitude,
+    lng: listing.longitude,
+    pricePerNight: pricePerNight ?? 0,
+    ratingAvg: listing.ratingAvg ?? 0,
+  }));
 
-  const result = { items, total, facets, mapPins };
-  await redis.setex(cacheKey(params), config.cache.searchTtlSeconds, JSON.stringify(result));
-  return result;
+  const base: CachedSearchBase = {
+    items,
+    total: items.length,
+    facets,
+    mapPins,
+  };
+
+  await cacheSet(key, base, config.cache.searchTtlSeconds);
+  return paginateResult(base, page, limit, includeMapPins);
 }
 
 function buildFacets(listings: { propertyType: string; amenities: string[]; price: number | null }[]) {

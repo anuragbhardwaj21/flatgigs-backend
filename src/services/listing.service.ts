@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma";
+import { config } from "../config";
+import { cacheGet, cacheSet } from "../lib/cache";
 
 const listingInclude = {
   city: { select: { slug: true, name: true } },
@@ -66,16 +68,40 @@ export async function getListingById(id: string) {
   });
 }
 
+export async function getListingDetail(id: string): Promise<ListingDetail | null> {
+  const key = `listing:detail:v1:${id}`;
+  const cached = await cacheGet<ListingDetail>(key);
+  if (cached) return cached;
+
+  const listing = await getListingById(id);
+  if (!listing) return null;
+
+  const detail = toListingDetail(listing);
+  await cacheSet(key, detail, config.cache.listingTtlSeconds);
+  return detail;
+}
+
 export type WishlistListing = ListingDetail & { savedAt: string };
 
+export function wishlistCacheKey(token: string): string {
+  return `wishlist:v1:${token}`;
+}
+
 export async function getWishlistListings(token: string): Promise<WishlistListing[]> {
+  const key = wishlistCacheKey(token);
+  const cached = await cacheGet<WishlistListing[]>(key);
+  if (cached) return cached;
+
   const items = await prisma.wishlistItem.findMany({
     where: { token },
     orderBy: { createdAt: "desc" },
     select: { listingId: true, createdAt: true },
   });
 
-  if (items.length === 0) return [];
+  if (items.length === 0) {
+    await cacheSet(key, [], config.cache.wishlistTtlSeconds);
+    return [];
+  }
 
   const listings = await prisma.listing.findMany({
     where: { id: { in: items.map((i) => i.listingId) } },
@@ -84,11 +110,14 @@ export async function getWishlistListings(token: string): Promise<WishlistListin
 
   const byId = new Map(listings.map((l) => [l.id, l]));
 
-  return items.flatMap((item) => {
+  const result = items.flatMap((item) => {
     const listing = byId.get(item.listingId);
     if (!listing) return [];
     return [{ ...toListingDetail(listing), savedAt: item.createdAt.toISOString() }];
   });
+
+  await cacheSet(key, result, config.cache.wishlistTtlSeconds);
+  return result;
 }
 
 export async function getListingCalendar(id: string, from?: string, to?: string) {

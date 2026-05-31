@@ -93,4 +93,23 @@ Set `DATABASE_URL=postgresql://flatgigs:flatgigs@localhost:5433/flatgigs?schema=
 | `OPENAI_API_KEY` | yes (chat + embeddings) |
 | `CORS_ORIGIN` | optional — omit or `*` = allow all; comma-list to restrict |
 
+### Cache TTLs (optional, seconds)
+
+All default to sensible values in [`src/config.ts`](src/config.ts). Override in production to tune Redis caching.
+
+| Variable | Default | Used for |
+|----------|---------|----------|
+| `CACHE_SEARCH_TTL_SECONDS` | 900 | Search results (REST + AI DB layer) |
+| `CACHE_TOP_PICKS_TTL_SECONDS` | 3600 | Homepage top picks |
+| `CACHE_LISTING_TTL_SECONDS` | 86400 | Listing detail |
+| `CACHE_CITIES_TTL_SECONDS` | 86400 | Cities list |
+| `CACHE_WISHLIST_TTL_SECONDS` | 300 | Wishlist per token |
+| `CACHE_SUMMARY_TTL_SECONDS` | 86400 | Batch listing summaries |
+| `CACHE_RATIONALE_TTL_SECONDS` | 86400 | AI search rationales |
+| `CACHE_COMPARE_TTL_SECONDS` | 3600 | Compare endpoint |
+| `CACHE_CHAT_TTL_SECONDS` | 1200 | WebSocket chat session |
+| `CACHE_TRACE_TTL_SECONDS` | 3600 | Agent debug traces |
+
+Ingest automatically flushes search, listing, cities, compare, rationale, and wishlist caches when data reload completes.
+
 See [`.env.docker.example`](.env.docker.example) for Docker. Other settings: [`src/config.ts`](src/config.ts).

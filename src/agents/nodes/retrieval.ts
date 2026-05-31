@@ -1,5 +1,6 @@
 import pLimit from "p-limit";
 import { config } from "../../config";
+import { cacheGet, cacheSet, stableHash } from "../../lib/cache";
 import { getOpenAI, hasOpenAI } from "../../lib/openai";
 import type { ConversationState } from "../../services/chat.service";
 import type { SearchResult } from "../../services/search.service";
@@ -20,13 +21,40 @@ export type RetrievalResult = {
   facets: SearchResult["facets"];
 };
 
+function tripHash(slots: ConversationSlots): string {
+  return stableHash({
+    city: slots.city,
+    checkIn: slots.checkIn,
+    checkOut: slots.checkOut,
+    adults: slots.adults,
+    children: slots.children,
+    priceMin: slots.priceMin,
+    budgetMax: slots.budgetMax,
+    ratingMin: slots.ratingMin,
+    propertyTypes: slots.propertyTypes?.slice().sort(),
+    amenities: slots.mustHaveAmenities?.slice().sort(),
+  });
+}
+
+function rationaleCacheKey(listingId: string, slots: ConversationSlots): string {
+  return `rationale:v1:${listingId}:${tripHash(slots)}`;
+}
+
 async function rationaleForItem(
   item: SearchResult["items"][number],
   slots: ConversationSlots,
   trace: TraceHandle
 ): Promise<string> {
+  const fallback = `Matches your stay in ${slots.city} with ${slots.adults} adults.`;
+  const key = rationaleCacheKey(item.id, slots);
+
+  const cached = await cacheGet<string>(key);
+  if (cached) {
+    return cached;
+  }
+
   if (!hasOpenAI()) {
-    return `Matches your stay in ${slots.city} with ${slots.adults} adults.`;
+    return fallback;
   }
 
   const openai = getOpenAI();
@@ -54,10 +82,12 @@ async function rationaleForItem(
     trace.tokensUsed += (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
   }
 
-  return (
+  const rationale =
     completion.choices[0]?.message?.content?.trim() ??
-    `Well-rated ${item.propertyType} in ${slots.city}.`
-  );
+    `Well-rated ${item.propertyType} in ${slots.city}.`;
+
+  await cacheSet(key, rationale, config.cache.rationaleTtlSeconds);
+  return rationale;
 }
 
 export async function runRetrieval(
