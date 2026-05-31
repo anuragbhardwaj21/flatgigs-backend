@@ -11,7 +11,7 @@ import {
 } from "../services/chat.service";
 import { runConcierge } from "./nodes/concierge";
 import type { ConversationSlots } from "./schemas";
-import { buildVerifiedInputs } from "./tools";
+import { buildVerifiedInputs, buildSelectedFacets } from "./tools";
 import { runRetrieval } from "./nodes/retrieval";
 import { isReviewIntent, runReview } from "./nodes/review";
 import {
@@ -182,6 +182,8 @@ async function executeSearch(
     inputs,
     items: retrieval.items,
     total: retrieval.total,
+    facets: retrieval.facets,
+    selectedFacets: buildSelectedFacets(searchSlots),
     mapPins: retrieval.mapPins,
     chips: nextState.chips,
     meta: { requestId: trace.requestId, usage: { tokensUsed: trace.tokensUsed } },

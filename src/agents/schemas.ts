@@ -59,6 +59,18 @@ export type VerifiedSearchInputs = {
   amenities?: string[];
 };
 
+export type SelectedFacets = {
+  priceRange: { min: number | null; max: number | null };
+  propertyTypes: Record<string, true>;
+  amenities: Record<string, true>;
+  ratingMin: number | null;
+  city: string | null;
+  dates: { checkIn: string | null; checkOut: string | null };
+  guests: { adults: number | null; children: number | null; rooms: number | null };
+  vibe: string | null;
+  areaPreference: string | null;
+};
+
 export type TraceStep = {
   agent: string;
   action: string;
