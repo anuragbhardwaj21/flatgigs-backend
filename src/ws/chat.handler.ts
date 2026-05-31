@@ -2,6 +2,7 @@ import type { WebSocket } from "ws";
 import { validate as uuidValidate } from "uuid";
 import { fail, ok } from "../lib/api-response";
 import { sendWs } from "./ws-response";
+import { emitAssistantStatus, idleStatus } from "../agents/status";
 import {
   cancelTurn,
   handleChatMessage,
@@ -44,7 +45,7 @@ export async function handleWsMessage(
 
   if (event === "chat.cancel") {
     cancelTurn(token);
-    sendWs(ws, "assistant.status", ok({ status: "idle" }));
+    emitAssistantStatus({ ws, token }, idleStatus());
     return;
   }
 

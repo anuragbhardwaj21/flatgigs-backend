@@ -1,7 +1,8 @@
 import type { WebSocket } from "ws";
 import { ok } from "../lib/api-response";
 import { sendWs } from "../ws/ws-response";
-import type { EventSink } from "../agents/graph";
+import type { EventSink } from "../agents/status";
+import { emitAssistantStatus, idleStatus, onlineStatus } from "../agents/status";
 import { handleUserTurn } from "../agents/graph";
 import {
   createEmptyState,
@@ -26,7 +27,7 @@ export function isCancelled(token: string): boolean {
 export async function replayHistoryIfAny(ws: WebSocket, token: string): Promise<void> {
   const { state, messages } = await getChatSession(token);
   if (!state && messages.length === 0) {
-    sendWs(ws, "assistant.status", ok({ status: "online" }));
+    emitAssistantStatus({ ws, token }, onlineStatus());
     return;
   }
 
@@ -41,7 +42,7 @@ export async function replayHistoryIfAny(ws: WebSocket, token: string): Promise<
     expiresAt,
   }));
 
-  sendWs(ws, "assistant.status", ok({ status: "online" }));
+  emitAssistantStatus({ ws, token }, onlineStatus());
 }
 
 export async function handleChatStart(
@@ -64,7 +65,7 @@ export async function handleChatMessage(
 ): Promise<void> {
   if (isCancelled(token)) {
     clearCancel(token);
-    sendWs(ws, "assistant.status", ok({ status: "idle" }));
+    emitAssistantStatus({ ws, token }, idleStatus());
     return;
   }
 

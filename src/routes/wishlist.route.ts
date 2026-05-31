@@ -1,16 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { getListingById, getWishlistListings } from "../services/listing.service";
 
 export const wishlistRouter = Router();
 
 wishlistRouter.get("/wishlist", async (req, res) => {
-  const items = await prisma.wishlistItem.findMany({
-    where: { token: req.token! },
-    orderBy: { createdAt: "desc" },
-    select: { listingId: true, createdAt: true },
-  });
-  res.success({ listingIds: items.map((i) => i.listingId) });
+  const items = await getWishlistListings(req.token!);
+  res.success({ items, total: items.length });
 });
 
 wishlistRouter.post("/wishlist", async (req, res) => {
@@ -20,7 +17,7 @@ wishlistRouter.post("/wishlist", async (req, res) => {
     return;
   }
 
-  const listing = await prisma.listing.findUnique({ where: { id: body.data.listingId } });
+  const listing = await getListingById(body.data.listingId);
   if (!listing) {
     res.fail(404, "Listing not found");
     return;

@@ -1,12 +1,93 @@
 import { prisma } from "../lib/prisma";
 
+const listingInclude = {
+  city: { select: { slug: true, name: true } },
+  neighbourhood: { select: { name: true, slug: true } },
+} as const;
+
+type ListingWithRelations = NonNullable<Awaited<ReturnType<typeof getListingById>>>;
+
+export type ListingDetail = {
+  id: string;
+  name: string;
+  description: string | null;
+  propertyType: string;
+  roomType: string;
+  accommodates: number;
+  bedrooms: number | null;
+  beds: number | null;
+  bathrooms: number | null;
+  price: number | null;
+  latitude: number;
+  longitude: number;
+  amenities: string[];
+  photos: string[];
+  host: { id: string | null; name: string | null };
+  ratingAvg: number | null;
+  reviewCount: number;
+  reviewSummary: string | null;
+  aspectScores: unknown;
+  city: { slug: string; name: string };
+  neighbourhood: { name: string; slug: string } | null;
+  sourceUrl: string | null;
+};
+
+export function toListingDetail(listing: ListingWithRelations): ListingDetail {
+  return {
+    id: listing.id,
+    name: listing.name,
+    description: listing.description,
+    propertyType: listing.propertyType,
+    roomType: listing.roomType,
+    accommodates: listing.accommodates,
+    bedrooms: listing.bedrooms,
+    beds: listing.beds,
+    bathrooms: listing.bathrooms,
+    price: listing.price,
+    latitude: listing.latitude,
+    longitude: listing.longitude,
+    amenities: listing.amenities,
+    photos: listing.photos,
+    host: { id: listing.hostId, name: listing.hostName },
+    ratingAvg: listing.ratingAvg,
+    reviewCount: listing.reviewCount,
+    reviewSummary: listing.reviewSummary,
+    aspectScores: listing.aspectScores,
+    city: listing.city,
+    neighbourhood: listing.neighbourhood,
+    sourceUrl: listing.sourceUrl,
+  };
+}
+
 export async function getListingById(id: string) {
   return prisma.listing.findUnique({
     where: { id },
-    include: {
-      city: { select: { slug: true, name: true } },
-      neighbourhood: { select: { name: true, slug: true } },
-    },
+    include: listingInclude,
+  });
+}
+
+export type WishlistListing = ListingDetail & { savedAt: string };
+
+export async function getWishlistListings(token: string): Promise<WishlistListing[]> {
+  const items = await prisma.wishlistItem.findMany({
+    where: { token },
+    orderBy: { createdAt: "desc" },
+    select: { listingId: true, createdAt: true },
+  });
+
+  if (items.length === 0) return [];
+
+  const listings = await prisma.listing.findMany({
+    where: { id: { in: items.map((i) => i.listingId) } },
+    include: listingInclude,
+  });
+
+  const byId = new Map(listings.map((l) => [l.id, l]));
+
+  return items.flatMap((item) => {
+    const listing = byId.get(item.listingId);
+    if (!listing) return [];
+    return [{ ...toListingDetail(listing), savedAt: item.createdAt.toISOString() }];
   });
 }
 

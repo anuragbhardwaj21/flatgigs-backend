@@ -5,6 +5,7 @@ import {
   getListingCalendar,
   getListingReviews,
   buildPriceQuote,
+  toListingDetail,
 } from "../services/listing.service";
 
 export const listingsRouter = Router();
@@ -15,30 +16,7 @@ listingsRouter.get("/listings/:id", async (req, res) => {
     res.fail(404, "Listing not found");
     return;
   }
-  res.success({
-    id: listing.id,
-    name: listing.name,
-    description: listing.description,
-    propertyType: listing.propertyType,
-    roomType: listing.roomType,
-    accommodates: listing.accommodates,
-    bedrooms: listing.bedrooms,
-    beds: listing.beds,
-    bathrooms: listing.bathrooms,
-    price: listing.price,
-    latitude: listing.latitude,
-    longitude: listing.longitude,
-    amenities: listing.amenities,
-    photos: listing.photos,
-    host: { id: listing.hostId, name: listing.hostName },
-    ratingAvg: listing.ratingAvg,
-    reviewCount: listing.reviewCount,
-    reviewSummary: listing.reviewSummary,
-    aspectScores: listing.aspectScores,
-    city: listing.city,
-    neighbourhood: listing.neighbourhood,
-    sourceUrl: listing.sourceUrl,
-  });
+  res.success(toListingDetail(listing));
 });
 
 listingsRouter.get("/listings/:id/calendar", async (req, res) => {

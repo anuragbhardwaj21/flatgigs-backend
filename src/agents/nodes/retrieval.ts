@@ -7,6 +7,7 @@ import { searchFromSlots } from "../tools";
 import type { ConversationSlots } from "../schemas";
 import type { TraceHandle } from "../trace.service";
 import { syncStateFromSlots } from "../slots";
+import { emitAssistantStatus, type EventSink } from "../status";
 
 export type RetrievalItem = SearchResult["items"][number] & { rationale: string };
 
@@ -61,18 +62,63 @@ async function rationaleForItem(
 
 export async function runRetrieval(
   state: ConversationState,
-  trace: TraceHandle
+  trace: TraceHandle,
+  sink: EventSink
 ): Promise<RetrievalResult | null> {
   const slots = state.slots as ConversationSlots;
+  const city =
+    typeof slots.city === "string" && slots.city.length
+      ? slots.city.charAt(0).toUpperCase() + slots.city.slice(1)
+      : "your destination";
+
+  emitAssistantStatus(sink, {
+    status: "searching",
+    label: `Checking availability in ${city}…`,
+    agent: "retrieval",
+    phase: "searching",
+    step: "filter",
+    progress: 15,
+    requestId: trace.requestId,
+  });
+
   const results = await searchFromSlots(slots);
   if (!results) {
     return null;
   }
 
+  emitAssistantStatus(sink, {
+    status: "searching",
+    label: `Ranking ${results.total} matches…`,
+    agent: "retrieval",
+    phase: "searching",
+    step: "rank",
+    progress: 35,
+    detail: `${results.items.length} shortlisted`,
+    requestId: trace.requestId,
+  });
+
   const limit = pLimit(3);
   const top = results.items.slice(0, 10);
+  let completed = 0;
+
   const rationales = await Promise.all(
-    top.map((item) => limit(() => rationaleForItem(item, slots, trace)))
+    top.map((item) =>
+      limit(async () => {
+        const rationale = await rationaleForItem(item, slots, trace);
+        completed += 1;
+        emitAssistantStatus(sink, {
+          status: "searching",
+          label: `Explaining picks (${completed}/${top.length})…`,
+          agent: "retrieval",
+          phase: "searching",
+          step: "rationale",
+          progress: 35 + Math.round((completed / top.length) * 55),
+          detail: item.name,
+          requestId: trace.requestId,
+        });
+        return rationale;
+      })
+    )
   );
 
   const items: RetrievalItem[] = results.items.map((item, i) => ({
