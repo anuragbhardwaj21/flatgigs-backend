@@ -10,7 +10,9 @@ import type { TraceHandle } from "../trace.service";
 import { syncStateFromSlots } from "../slots";
 import { emitAssistantStatus, type EventSink } from "../status";
 
-export type RetrievalItem = SearchResult["items"][number] & { rationale: string };
+export type RetrievalItem = SearchResult["items"][number] & {
+  rationale: string;
+};
 
 export type RetrievalResult = {
   state: ConversationState;
@@ -36,14 +38,17 @@ function tripHash(slots: ConversationSlots): string {
   });
 }
 
-function rationaleCacheKey(listingId: string, slots: ConversationSlots): string {
+function rationaleCacheKey(
+  listingId: string,
+  slots: ConversationSlots,
+): string {
   return `rationale:v1:${listingId}:${tripHash(slots)}`;
 }
 
 async function rationaleForItem(
   item: SearchResult["items"][number],
   slots: ConversationSlots,
-  trace: TraceHandle
+  trace: TraceHandle,
 ): Promise<string> {
   const fallback = `Matches your stay in ${slots.city} with ${slots.adults} adults.`;
   const key = rationaleCacheKey(item.id, slots);
@@ -65,13 +70,64 @@ async function rationaleForItem(
     messages: [
       {
         role: "system",
-        content: "One factual sentence why this listing fits the trip. No invented amenities.",
+        content: `
+          You are a travel recommendation assistant.
+          
+          Your task is to explain why a specific listing is a good match for the traveler's trip.
+          
+          Rules:
+          - Write exactly 1 concise sentence (15-30 words).
+          - Be factual and use only the provided listing data.
+          - Mention the strongest relevant factors such as:
+            - location
+            - property type
+            - guest rating
+            - review quality
+            - amenities
+            - suitability for group size
+            - value for money
+          - Prioritize the factors that best match the trip details.
+          - Never invent amenities, features, reviews, locations, prices, or policies.
+          - Avoid generic statements like "great option" or "good choice".
+          - Sound like a personalized recommendation.
+          - Do not use bullet points.
+          - Do not mention missing information.
+          
+          Examples:
+          "Highly rated apartment in Dubai with strong guest reviews and amenities suitable for a family stay."
+          "Well-reviewed villa offering more space for four adults and excellent guest satisfaction scores."
+          "Top-rated property near the requested area with amenities that align well with this trip."
+        `,
       },
       {
         role: "user",
         content: JSON.stringify({
-          listing: { name: item.name, type: item.propertyType, rating: item.rating },
-          trip: { city: slots.city, checkIn: slots.checkIn, checkOut: slots.checkOut, adults: slots.adults },
+          listing: {
+            name: item.name,
+            type: item.propertyType,
+            roomType: item.roomType,
+            rating: item.rating,
+            reviewCount: item.reviewCount,
+            pricePerNight: item.pricePerNight,
+            totalForStay: item.totalForStay,
+            amenities: item.amenities,
+            distanceKm: item.distanceKm,
+          },
+          trip: {
+            city: slots.city,
+            checkIn: slots.checkIn,
+            checkOut: slots.checkOut,
+            adults: slots.adults,
+            children: slots.children,
+            rooms: slots.rooms,
+            budgetMax: slots.budgetMax,
+            priceMin: slots.priceMin,
+            ratingMin: slots.ratingMin,
+            propertyTypes: slots.propertyTypes,
+            mustHaveAmenities: slots.mustHaveAmenities,
+            vibe: slots.vibe,
+            areaPreference: slots.areaPreference,
+          },
         }),
       },
     ],
@@ -79,7 +135,8 @@ async function rationaleForItem(
 
   const usage = completion.usage;
   if (usage) {
-    trace.tokensUsed += (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
+    trace.tokensUsed +=
+      (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
   }
 
   const rationale =
@@ -93,7 +150,7 @@ async function rationaleForItem(
 export async function runRetrieval(
   state: ConversationState,
   trace: TraceHandle,
-  sink: EventSink
+  sink: EventSink,
 ): Promise<RetrievalResult | null> {
   const slots = state.slots as ConversationSlots;
   const city =
@@ -147,13 +204,16 @@ export async function runRetrieval(
           requestId: trace.requestId,
         });
         return rationale;
-      })
-    )
+      }),
+    ),
   );
 
   const items: RetrievalItem[] = results.items.map((item, i) => ({
     ...item,
-    rationale: i < rationales.length ? rationales[i] : `Available for your dates in ${slots.city}.`,
+    rationale:
+      i < rationales.length
+        ? rationales[i]
+        : `Available for your dates in ${slots.city}.`,
   }));
 
   const total = results.total;
