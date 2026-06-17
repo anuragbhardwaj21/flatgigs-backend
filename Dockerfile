@@ -1,6 +1,6 @@
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app2
 
 RUN corepack enable && corepack prepare yarn@1.22.22 --activate
 
@@ -16,16 +16,16 @@ RUN yarn build
 
 FROM node:20-alpine AS runner
 
-WORKDIR /app
+WORKDIR /app2
 
 ENV NODE_ENV=production
 
 RUN apk add --no-cache bash
 
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app2/package.json ./
+COPY --from=builder /app2/node_modules ./node_modules
+COPY --from=builder /app2/dist ./dist
+COPY --from=builder /app2/prisma ./prisma
 COPY scripts/docker ./scripts/docker
 
 RUN chmod +x scripts/docker/*.sh
