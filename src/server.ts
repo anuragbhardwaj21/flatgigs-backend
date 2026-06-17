@@ -5,7 +5,7 @@ import { attachWebSocketServer } from "./ws/server";
 import { ensureRedis } from "./lib/redis";
 
 async function main() {
-  await ensureRedis();
+  // await ensureRedis();
   const app = createApp();
   const server = http.createServer(app);
   attachWebSocketServer(server);
