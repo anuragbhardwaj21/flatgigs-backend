@@ -67,7 +67,7 @@ services:
         condition: service_healthy
     volumes:
       - ingest_data:/app/data/raw
-    command: ["sh", "scripts/docker/bootstrap-ingest.sh"]
+    command: ["sh", "scripts/docker/ingest.sh"]
     restart: "no"
 
 volumes:
