@@ -33,10 +33,10 @@ services:
 
   app:
     build: .
-    container_name: flatgigs-app2
+    container_name: flatgigs-app
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "4000:4000"
     env_file:
       - .env
     environment:

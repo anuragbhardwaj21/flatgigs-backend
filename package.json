@@ -8,6 +8,7 @@
     "start": "node dist/src/server.js",
     "ingest": "tsx scripts/ingest/index.ts",
     "ingest:download": "tsx scripts/ingest/download.ts",
+    "docker:up": "bash scripts/docker/bootstrap.sh",
     "docker:ingest": "bash scripts/docker/run-ingest.sh",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
