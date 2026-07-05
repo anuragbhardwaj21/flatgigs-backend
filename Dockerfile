@@ -10,7 +10,7 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
 
-RUN yarn install --frozen-lockfile
+RUN yarn install
 RUN yarn prisma:generate
 RUN yarn build
 
